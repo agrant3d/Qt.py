@@ -2,11 +2,14 @@
 
 There are cases where Qt.py is not handling incompatibility issues.
 
-- [QtCore.QAbstractItemModel.createIndex](CAVEATS.md#qtcoreqabstractmodelcreateindex)
-- [QtCore.QItemSelection](CAVEATS.md#qtcoreqitemselection)
-- [QtCore.Slot](CAVEATS.md#qtcoreslot)
-- [QtWidgets.QAction.triggered](CAVEATS.md#qtwidgetsqactiontriggered)
-- [QtGui.QRegExpValidator](CAVEATS.md#qtguiqregexpvalidator)
+- [QtCore.QAbstractItemModel.createIndex](#qtcoreqabstractmodelcreateindex)
+- [QtCore.QItemSelection](#qtcoreqitemselection)
+- [QtCore.Slot](#qtcoreslot)
+- [QtWidgets.QAction.triggered](#qtwidgetsqactiontriggered)
+- [QtGui.QRegExpValidator](#qtguiqregexpvalidator)
+- [QtWidgets.QHeaderView.setResizeMode](#qtwidgetsqheaderviewsetresizemode)
+- [QtWidgets.qApp](#qtwidgetsqapp)
+- [QtCompat.wrapInstance](#qtcompatwrapinstance)
 
 <br>
 <br>
@@ -72,14 +75,14 @@ I had been using the id as an index into a list. But the unexpected return value
 PySide has the `QItemSelection.isEmpty` and `QItemSelection.empty` attributes while PyQt4 only has the `QItemSelection.isEmpty` attribute.
 
 ```python
-# PySide
+# PySide2
 >>> from Qt import QtCore
 >>> func = QtCore.QItemSelection.isEmpty
 >>> func = QtCore.QItemSelection.empty
 ```
 
 ```python
-# PyQt4
+# PyQt5
 >>> from Qt import QtCore
 >>> func = QtCore.QItemSelection.isEmpty
 >>> func = QtCore.QItemSelection.empty
@@ -120,15 +123,15 @@ PySide allows for a `result=None` keyword param to set the return type. PyQt4 cr
 
 ```python
 # PySide
->>> from Qt import QtCore, QtGui
->>> slot = QtCore.Slot(QtGui.QWidget, result=None)
+>>> from Qt import QtCore, QtWidgets
+>>> slot = QtCore.Slot(QtWidgets.QWidget, result=None)
 ```
 
 ```python
 # PyQt4, Python2
->>> from Qt import QtCore, QtGui
->>> slot = QtCore.Slot(QtGui.QWidget)
->>> slot = QtCore.Slot(QtGui.QWidget, result=None)
+>>> from Qt import QtCore, QtWidgets
+>>> slot = QtCore.Slot(QtWidgets.QWidget)
+>>> slot = QtCore.Slot(QtWidgets.QWidget, result=None)
 Traceback (most recent call last):
 ...
 TypeError: string or ASCII unicode expected not 'NoneType'
@@ -136,9 +139,9 @@ TypeError: string or ASCII unicode expected not 'NoneType'
 
 ```python
 # PyQt4, Python3
->>> from Qt import QtCore, QtGui
->>> slot = QtCore.Slot(QtGui.QWidget)
->>> slot = QtCore.Slot(QtGui.QWidget, result=None)
+>>> from Qt import QtCore, QtWidgets
+>>> slot = QtCore.Slot(QtWidgets.QWidget)
+>>> slot = QtCore.Slot(QtWidgets.QWidget, result=None)
 Traceback (most recent call last):
 ...
 TypeError: bytes or ASCII string expected not 'NoneType'
@@ -154,8 +157,10 @@ TypeError: bytes or ASCII string expected not 'NoneType'
 
 PySide cannot accept any arguments. In PyQt4, `QAction.triggered` signal requires a bool arg.
 
+**Note**: This is not included on our tests, as we cannot reproduce this using PyQt4 4.11.4, CY2017. It's likely that this issue persists in e.g. Maya version < 2017.
+
 ```python
-# PySide
+# PySide, untested
 >>> from Qt import QtCore, QtWidgets
 >>> obj = QtCore.QObject()
 >>> action = QtWidgets.QAction(obj)
@@ -168,7 +173,7 @@ TypeError: triggered() only accepts 0 arguments, 2 given!
 ```
 
 ```python
-# PyQt4
+# PyQt4, untested
 >>> from Qt import QtCore, QtWidgets
 >>> obj = QtCore.QObject()
 >>> action = QtWidgets.QAction(obj)
@@ -216,3 +221,131 @@ Traceback (most recent call last):
 ...
 TypeError: ...
 ```
+
+
+<br>
+<br>
+<br>
+
+
+#### QtWidgets.QHeaderView.setResizeMode
+
+`setResizeMode` was [renamed](http://doc.qt.io/qt-5/qheaderview.html#setSectionResizeMode) `setSectionResizeMode` in Qt 5.
+
+```python
+# PySide2
+>>> from Qt import QtWidgets
+>>> app = QtWidgets.QApplication(sys.argv)
+>>> view = QtWidgets.QTreeWidget()
+>>> header = view.header()
+>>> header.setResizeMode(QtWidgets.QHeaderView.Fixed)
+Traceback (most recent call last):
+...
+AttributeError: 'PySide2.QtWidgets.QHeaderView' object has no attribute 'setResizeMode'
+```
+
+```python
+# PySide
+>>> from Qt import QtWidgets
+>>> app = QtWidgets.QApplication(sys.argv)
+>>> view = QtWidgets.QTreeWidget()
+>>> header = view.header()
+>>> header.setSectionResizeMode(QtWidgets.QHeaderView.Fixed)
+Traceback (most recent call last):
+...
+AttributeError: 'PySide.QtGui.QHeaderView' object has no attribute 'setSectionResizeMode'
+```
+
+##### Workaround
+
+Use compatibility wrapper.
+
+```python
+# PySide2
+>>> from Qt import QtWidgets, QtCompat
+>>> app = QtWidgets.QApplication(sys.argv)
+>>> view = QtWidgets.QTreeWidget()
+>>> header = view.header()
+>>> QtCompat.QHeaderView.setSectionResizeMode(header, QtWidgets.QHeaderView.Fixed)
+```
+
+Or a conditional.
+
+```python
+# PyQt5
+>>> from Qt import QtWidgets, __binding__
+>>> app = QtWidgets.QApplication(sys.argv)
+>>> view = QtWidgets.QTreeWidget()
+>>> header = view.header()
+>>> if __binding__ in ("PyQt4", "PySide"):
+...   header.setResizeMode(QtWidgets.QHeaderView.Fixed)
+... else:
+...   header.setSectionResizeMode(QtWidgets.QHeaderView.Fixed)
+```
+
+Note: Qt.QtCompat.setSectionResizeMode is a older way this was handled and has been left in for now, but this will likely be removed in the future.
+
+<br>
+<br>
+
+#### QtWidgets.qApp
+
+`qApp` is not included in Qt.py due to the way Qt keeps this up to date with the currently active QApplication.
+
+Qt implicitly updates this variable through monkey patching whenever a new QApplication is instantiated. This means that our variable quickly goes out of date and is not updated at the same time.
+
+```python
+# PySide2
+>>> from Qt import QtWidgets
+>>> "qApp" in dir(QtWidgets)
+False
+```
+
+##### Workaround
+
+Use `QApplication.instance()` instead.
+
+Technically, there is no difference between the two, apart from more characters to type.
+
+```python
+# PySide2
+>>> from Qt import QtWidgets
+>>> app = QtWidgets.QApplication(sys.argv)
+>>> app == QtWidgets.QApplication.instance()
+True
+```
+
+
+#### QtCompat.wrapInstance
+
+`QtCompat.wrapInstance` differs across `sip` and `shiboken` in subtle ways.
+
+```python
+# PySide2
+>>> from Qt import QtCompat, QtWidgets
+>>> app = QtWidgets.QApplication(sys.argv)
+>>> button = QtWidgets.QPushButton("Hello world")
+>>> button.setObjectName("MySpecialButton")
+>>> pointer = QtCompat.getCppPointer(button)
+>>> widget = QtCompat.wrapInstance(long(pointer))
+>>> assert isinstance(widget, QtWidgets.QWidget), widget
+>>> assert widget.objectName() == button.objectName()
+>>> widget == button
+False
+```
+
+```python
+# PyQt5
+>>> from Qt import QtCompat, QtWidgets
+>>> app = QtWidgets.QApplication(sys.argv)
+>>> button = QtWidgets.QPushButton("Hello world")
+>>> button.setObjectName("MySpecialButton")
+>>> pointer = QtCompat.getCppPointer(button)
+>>> widget = QtCompat.wrapInstance(long(pointer))
+>>> assert isinstance(widget, QtWidgets.QWidget), widget
+>>> assert widget.objectName() == button.objectName()
+>>> widget == button
+True
+```
+
+Note the `False` for PySide2 and `True` for PyQt5.
